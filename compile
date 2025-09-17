@@ -1,0 +1,9 @@
+patch -p1 --forward -d vendor/redis < patches/redis-8.2.1.patch
+
+docker run \
+  --rm \
+  -v $(pwd):/src \
+  -u $(id -u):$(id -g) \
+  -w /src \
+  emscripten/emsdk \
+  make $@

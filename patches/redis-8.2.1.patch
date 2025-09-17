@@ -1,0 +1,42 @@
+diff --git a/src/server.c b/src/server.c
+index a144001b1..6f5774dbf 100644
+--- a/src/server.c
++++ b/src/server.c
+@@ -2474,6 +2474,12 @@ int setOOMScoreAdj(int process_class) {
+  * max number of clients, the function will do the reverse setting
+  * server.maxclients to the value that we can actually handle. */
+ void adjustOpenFilesLimit(void) {
++#if defined(__EMSCRIPTEN__)
++    /* On Emscripten, getrlimit/setrlimit map to prlimit64 which is unsupported.
++     * Avoid these syscalls to silence runtime warnings. We keep server.maxclients
++     * unchanged since our WASM build runs fully in-process without sockets. */
++    return;
++#else
+     rlim_t maxfiles = server.maxclients+CONFIG_MIN_RESERVED_FDS;
+     struct rlimit limit;
+ 
+@@ -2549,6 +2555,7 @@ void adjustOpenFilesLimit(void) {
+             }
+         }
+     }
++#endif
+ }
+ 
+ /* Check that server.tcp_backlog can be actually enforced in Linux according
+diff --git a/src/util.c b/src/util.c
+index ba3d9d072..6b9f053bf 100644
+--- a/src/util.c
++++ b/src/util.c
+@@ -1085,7 +1085,11 @@ sds getAbsolutePath(char *filename) {
+  * i.e timezone variables are linux specific.
+  */
+ long getTimeZone(void) {
+-#if defined(__linux__) || defined(__sun)
++#if defined(__EMSCRIPTEN__)
++    /* In Emscripten, gettimeofday requires a non-NULL timeval and ignores the timezone arg.
++     * Returning 0 (UTC) is sufficient for our WASM build. */
++    return 0;
++#elif defined(__linux__) || defined(__sun)
+     return timezone;
+ #else
+     struct timezone tz;
