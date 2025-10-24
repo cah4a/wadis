@@ -13,7 +13,9 @@ export type WadisOptions = Omit<
 };
 
 export class Wadis extends Redis {
-   constructor({ server, ...options }: WadisOptions = {}) {
+   constructor(
+      { server, ...options }: WadisOptions = { maxRetriesPerRequest: null },
+   ) {
       const wasmServer = server ?? WadisServer.new();
 
       class Connector extends AbstractConnector {

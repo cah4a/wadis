@@ -1,6 +1,7 @@
 // Minimal shim to run Redis fully in-process and expose C-callable entrypoints
 // WARNING: This assumes we run in a single-threaded WASM environment.
 #include "server.h"
+#include "script.h"
 #include "resp_parser.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -147,14 +148,25 @@ int redis_client_feed(int handle, const unsigned char *in_ptr, size_t in_len) {
     if (idx >= g_clients_cap) return 2;
     client *c = g_clients[idx];
     if (!c) return 3;
+
     if (!c->querybuf) {
         c->querybuf = sdsnewlen((const char*)in_ptr, in_len);
         c->qb_pos = 0;
     } else {
         c->querybuf = sdscatlen(c->querybuf, in_ptr, in_len);
     }
+
+    /* Avoid re-entrancy: if a command (or script) is currently executing on
+     * this client, defer parsing until the execution is done. This prevents
+     * processMultibulkBuffer() from asserting that c->argc == 0 while the
+     * previous command argv is still populated. */
+    if ((c->flags & CLIENT_EXECUTING_COMMAND) || scriptIsRunning()) {
+        return 0;
+    }
+
     int rc = processInputBuffer(c);
     if (rc == C_ERR && server.current_client == NULL) return 4;
+
     return 0;
 }
 
@@ -164,6 +176,17 @@ int redis_client_read(int handle, unsigned char **out_ptr, size_t *out_len) {
     if (idx >= g_clients_cap) return 2;
     client *c = g_clients[idx];
     if (!c) return 3;
+
+    /* If there's pending input buffered and we're not in the middle of
+     * executing a command (or a script), process it now so replies are
+     * available to read. */
+    if (c->querybuf && sdslen(c->querybuf) > 0 &&
+        !(c->flags & CLIENT_EXECUTING_COMMAND) && !scriptIsRunning())
+    {
+        int rc = processInputBuffer(c);
+        if (rc == C_ERR && server.current_client == NULL) return 5;
+    }
+
     size_t total = (size_t)c->bufpos;
     listIter li;
     listNode *ln;

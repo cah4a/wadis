@@ -39,7 +39,7 @@ export class WadisServer {
    private constructor(private _opts: WadisOptions = {}) {}
 
    static async new(
-      opts: WadisOptions = { loglevel: "warning" },
+      opts: WadisOptions = { loglevel: "debug" },
    ): Promise<WadisServer> {
       const server = new WadisServer(opts);
       await server.start();
@@ -203,7 +203,7 @@ export class WadisServer {
       } as const;
    }
 
-   terminate(): void {
+   async terminate() {
       if (this._clientHandle !== null) {
          this._clientFree(this._clientHandle);
       }

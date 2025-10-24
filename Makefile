@@ -7,8 +7,9 @@
 #   make clean
 
 EMCC ?= emcc
+EMXX ?= em++
 OUTDIR := build
-BUILDDIR := build
+BUILDDIR := node_modules/.cache/build
 TARGET_JS := $(OUTDIR)/redis.js
 TARGET_WASM := $(OUTDIR)/redis.wasm
 RELEASE_HDR := $(REDIS_SRC)/release.h
@@ -31,7 +32,7 @@ BASE_EM_FLAGS := \
 
 # Allow callers to append flags without clobbering the defaults
 EXTRA_EM_FLAGS ?=
-EM_FLAGS := $(BASE_EM_FLAGS) $(EXTRA_EM_FLAGS)
+EM_FLAGS := $(BASE_EM_FLAGS) -s STACK_SIZE=1048576 $(EXTRA_EM_FLAGS) --source-map-base=\"vendor/redis\"
 
 REDIS_SRC := vendor/redis/src
 DEPS_DIR := vendor/redis/deps
@@ -193,9 +194,17 @@ DEPS_SOURCES := \
 SHIM := wasm/shim.c
 COMPAT := wasm/compat.c
 FAST_FLOAT_CPP := $(DEPS_DIR)/fast_float/fast_float_strtod.cpp
-FAST_FLOAT_OBJ := $(BUILDDIR)/fast_float_strtod.o
 
-SOURCES := $(REDIS_SOURCES) $(DEPS_SOURCES) $(SHIM) $(COMPAT) $(FAST_FLOAT_OBJ)
+SOURCES := $(REDIS_SOURCES) $(DEPS_SOURCES) $(SHIM) $(COMPAT) $(FAST_FLOAT_CPP)
+
+# Per-file objects under build/ preserving relative paths to avoid name clashes
+C_OBJS := $(patsubst %.c,$(BUILDDIR)/%.o,$(filter %.c,$(SOURCES)))
+CPP_OBJS := $(patsubst %.cpp,$(BUILDDIR)/%.o,$(filter %.cpp,$(SOURCES)))
+OBJS := $(C_OBJS) $(CPP_OBJS)
+
+# Compile-time flags for objects (keep defines used by sources)
+CFLAGS ?= -O3 $(INCLUDES) -DHDR_MALLOC_INCLUDE=\"hdr_redis_malloc.h\" -DENABLE_CJSON_GLOBAL
+CXXFLAGS ?= -O3 -std=c++17 $(INCLUDES) -DHDR_MALLOC_INCLUDE=\"hdr_redis_malloc.h\" -DENABLE_CJSON_GLOBAL
 
 all: $(TARGET_JS)
 
@@ -205,15 +214,23 @@ $(OUTDIR):
 $(BUILDDIR):
 	mkdir -p $(BUILDDIR)
 
-$(TARGET_JS): $(OUTDIR) $(SOURCES) $(RELEASE_HDR)
-	$(EMCC) $(SOURCES) $(INCLUDES) $(EM_FLAGS) -o $(TARGET_JS)
+$(TARGET_JS): $(OUTDIR) $(OBJS) $(RELEASE_HDR)
+	$(EMCC) $(OBJS) $(EM_FLAGS) -o $(TARGET_JS)
 
 $(RELEASE_HDR):
 	cd $(REDIS_SRC) && sh ./mkreleasehdr.sh
 
-# Build C++ fast_float object with proper C++ standard
-$(FAST_FLOAT_OBJ): $(BUILDDIR) $(FAST_FLOAT_CPP)
-	em++ -O3 -std=c++17 $(INCLUDES) -c $(FAST_FLOAT_CPP) -o $(FAST_FLOAT_OBJ)
+# Object build rules
+$(BUILDDIR)/%.o: %.c | $(BUILDDIR)
+	@mkdir -p $(dir $@)
+	$(EMCC) $(CFLAGS) -c $< -o $@
+
+$(BUILDDIR)/%.o: %.cpp | $(BUILDDIR)
+	@mkdir -p $(dir $@)
+	$(EMXX) $(CXXFLAGS) -c $< -o $@
+
+# Ensure release.c is rebuilt when release.h changes
+$(BUILDDIR)/vendor/redis/src/release.o: $(RELEASE_HDR)
 
 clean:
 	rm -rf $(OUTDIR) $(BUILDDIR)

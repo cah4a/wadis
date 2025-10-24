@@ -8,6 +8,7 @@ export default defineConfig([
       dts: true,
       clean: true,
       treeshake: true,
+      external: ["ioredis"],
       esbuildPlugins: [
          copy({
             assets: [{ from: "build/redis.wasm", to: "redis.wasm" }],

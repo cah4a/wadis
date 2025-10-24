@@ -1,6 +1,7 @@
 import { WadisServer } from "wadisServer";
 import { TextDecoder } from "node:util";
 import { beforeEach, describe, expect, test } from "vitest";
+import { Wadis } from "index";
 
 describe("wadis server", () => {
    let server: WadisServer;

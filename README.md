@@ -1,7 +1,4 @@
-Wadis
-=======
-***Web Assembly Dictionary Service***
-
+Wadis — Web Assembly Dictionary Service
 ---
 
 A high-speed, ephemeral Wasm build of the Redis® open-source code, optimized for automated testing.
@@ -19,7 +16,7 @@ Wadis solves this by compiling the Redis server directly to WebAssembly.
 - ✅ **Zero State Collision**: Every instance is perfectly isolated. Since persistence is disabled, you get a 100% clean slate on every run.
 - ✅ **Zero Dependencies**: No Docker, no external binaries. Just a lightweight npm package that runs in-process with your tests.
 - ✅ **High Fidelity**: This isn't a rewrite. It's a build of the original Redis source code, so you can test with confidence.
-- ✅ ****: Supports advanced Redis features like Pub/Sub and Lua scripting.
+- ✅ **Feature coverage**: Supports advanced Redis features like Pub/Sub and Lua scripting.
 
 ## Quick Start
 

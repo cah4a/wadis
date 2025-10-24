@@ -1,7 +1,7 @@
 {
    "name": "wadis",
    "version": "1.0.0",
-   "description": "Wadis is a WebAssembly (Wasm) build of the Redis® in-memory datastore, purpose-built for automated testing. \uD83E\uDDEA",
+   "description": "Wadis is a WebAssembly (Wasm) build of the Redis® in-memory datastore, purpose-built for automated testing. 🧪",
    "repository": "https://github.com/cah4a/wadis",
    "type": "module",
    "license": "Redis Source Available License v2 (RSALv2)",
@@ -19,23 +19,25 @@
       "README.md",
       "LICENSE"
    ],
+   "packageManager": "pnpm@10.19.0",
    "scripts": {
       "build": "rm -rf dist && tsup",
-      "build:wasm": "./compile",
+      "build:wasm": "./compile && pnpm run build",
       "test": "vitest run",
       "lint": "eslint .",
-      "prepare": "npm run build",
+      "prepare": "pnpm run build",
       "patch:apply": "patch -p1 --forward -d vendor/redis < patches/redis-8.2.1.patch",
       "patch:create": "cd vendor/redis && git diff > ../../patches/redis-8.2.1.patch && cd -",
       "fmt": "biome format . --write",
       "fix": "biome check . --write"
    },
    "peerDependencies": {
-      "ioredis": "^5.7.0"
+      "ioredis": "^5.4.1"
    },
    "devDependencies": {
       "@biomejs/biome": "^2.2.4",
       "@types/node": "^22.7.4",
+      "bullmq": "^5.61.2",
       "esbuild-plugin-copy": "^2.1.1",
       "tsup": "^8.5.0",
       "typescript": "^5.6.3",
