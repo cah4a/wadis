@@ -1,4 +1,3 @@
-import { type Job, Queue, QueueEvents, Worker } from "bullmq";
 import { Wadis, WadisServer } from "index";
 import { describe, expect, test } from "vitest";
 
@@ -56,30 +55,32 @@ describe("ioredis adapter", () => {
 
    test("cjson.decode works", async () => {
       const r = new Wadis();
-      const res = await r.eval("local t=cjson.decode(ARGV[1]); return t.a+t.b", 0, "{\"a\":2,\"b\":3}");
+      const res = await r.eval(
+         "local t=cjson.decode(ARGV[1]); return t.a+t.b",
+         0,
+         '{"a":2,"b":3}',
+      );
       expect(res).toBe(5);
    });
 
    test("streams blocking unblocks", async () => {
-      const server = await WadisServer.new({
-         loglevel: "debug"
-      });
+      const server = await WadisServer.new();
       const c1 = new Wadis({ server });
       const c2 = new Wadis({ server });
 
       await c1.xgroup("CREATE", "s2", "g2", "0", "MKSTREAM");
 
-      const p = (c1 as any).xreadgroup(
+      const p = c1.xreadgroup(
          "GROUP",
          "g2",
          "w1",
-         "BLOCK",
+         "BLOCK" as never,
          2000,
          "COUNT",
          1,
          "STREAMS",
          "s2",
-         ">"
+         ">",
       );
 
       // wait a tick then add
@@ -93,29 +94,5 @@ describe("ioredis adapter", () => {
       await c1.quit();
       await c2.quit();
       await server.terminate();
-   });
-
-   test.skip("bullmq job", async () => {
-      const redis = new Wadis();
-
-      const myQueue = new Queue("my-queue", { connection: redis });
-      const events = new QueueEvents("my-queue", { connection: redis });
-      const worker = new Worker(
-         "my-queue",
-         async (job: Job) => {
-            return `Processed ${job.data.name}`;
-         },
-         { connection: redis },
-      );
-
-      const job = await myQueue.add("my-job", { name: "Test Job" });
-
-      await job.waitUntilFinished(events);
-
-      expect(job.returnvalue).toBe("Processed Test Job");
-
-      await worker.close();
-      await myQueue.close();
-      await events.close();
    });
 });

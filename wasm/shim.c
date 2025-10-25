@@ -132,7 +132,16 @@ int redis_create_handle(void) {
     /* Assign a fake non-NULL connection to satisfy memory-tracking asserts
      * (some code paths require c->conn != NULL). We never invoke any conn
      * methods on this fake connection. */
+    memset(&g_fake_conn, 0, sizeof(g_fake_conn));
+    g_fake_conn.state = CONN_STATE_CONNECTED;
+    g_fake_conn.fd = -1;
     c->conn = &g_fake_conn;
+
+    /* Prevent Redis from trying to install write handlers or write to the
+     * connection during beforeSleep()/whileBlocked processing. We read
+     * replies directly from c->buf / c->reply in the shim. */
+    c->flags |= CLIENT_PROTECTED;
+    c->io_flags &= ~CLIENT_IO_WRITE_ENABLED;
     if (g_clients_cap == 0) {
         g_clients_cap = 64;
         g_clients = (client**)calloc(g_clients_cap, sizeof(client*));

@@ -39,7 +39,7 @@ export class WadisServer {
    private constructor(private _opts: WadisOptions = {}) {}
 
    static async new(
-      opts: WadisOptions = { loglevel: "debug" },
+      opts: WadisOptions = { loglevel: "warning" },
    ): Promise<WadisServer> {
       const server = new WadisServer(opts);
       await server.start();

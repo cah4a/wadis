@@ -1,8 +1,29 @@
 diff --git a/src/server.c b/src/server.c
-index a144001b1..6f5774dbf 100644
+index a144001b1..9d00bca32 100644
 --- a/src/server.c
 +++ b/src/server.c
-@@ -2474,6 +2474,12 @@ int setOOMScoreAdj(int process_class) {
+@@ -1786,7 +1786,8 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
+         processed += connTypeProcessPendingData(server.el);
+         if (server.aof_state == AOF_ON || server.aof_state == AOF_WAIT_REWRITE)
+             flushAppendOnlyFile(0);
+-        processed += handleClientsWithPendingWrites();
++        /* wasm shim: avoid socket writes, replies are drained directly */
++        /* processed += handleClientsWithPendingWrites(); */
+         processed += freeClientsInAsyncFreeQueue();
+ 
+         /* Let the clients after the blocking call be processed. */
+@@ -1908,8 +1909,8 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
+         }
+     }
+ 
+-    /* Handle writes with pending output buffers. */
+-    handleClientsWithPendingWrites();
++    /* wasm shim: avoid socket writes, replies are drained directly */
++    /* handleClientsWithPendingWrites(); */
+ 
+     /* Let io thread to handle its pending clients. */
+     sendPendingClientsToIOThreads();
+@@ -2474,6 +2475,12 @@ int setOOMScoreAdj(int process_class) {
   * max number of clients, the function will do the reverse setting
   * server.maxclients to the value that we can actually handle. */
  void adjustOpenFilesLimit(void) {
@@ -15,7 +36,7 @@ index a144001b1..6f5774dbf 100644
      rlim_t maxfiles = server.maxclients+CONFIG_MIN_RESERVED_FDS;
      struct rlimit limit;
  
-@@ -2549,6 +2555,7 @@ void adjustOpenFilesLimit(void) {
+@@ -2549,6 +2556,7 @@ void adjustOpenFilesLimit(void) {
              }
          }
      }

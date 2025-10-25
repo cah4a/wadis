@@ -1,7 +1,7 @@
 {
    "name": "wadis",
    "version": "1.0.0",
-   "description": "Wadis is a WebAssembly (Wasm) build of the Redis® in-memory datastore, purpose-built for automated testing. 🧪",
+   "description": "Wadis is a WebAssembly (Wasm) build of the Redis® in-memory datastore, purpose-built for automated testing 🧪",
    "repository": "https://github.com/cah4a/wadis",
    "type": "module",
    "license": "Redis Source Available License v2 (RSALv2)",
