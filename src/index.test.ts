@@ -1,5 +1,5 @@
 import { type Job, Queue, QueueEvents, Worker } from "bullmq";
-import { Wadis } from "index";
+import { Wadis, WadisServer } from "index";
 import { describe, expect, test } from "vitest";
 
 describe("ioredis adapter", () => {
@@ -58,6 +58,41 @@ describe("ioredis adapter", () => {
       const r = new Wadis();
       const res = await r.eval("local t=cjson.decode(ARGV[1]); return t.a+t.b", 0, "{\"a\":2,\"b\":3}");
       expect(res).toBe(5);
+   });
+
+   test("streams blocking unblocks", async () => {
+      const server = await WadisServer.new({
+         loglevel: "debug"
+      });
+      const c1 = new Wadis({ server });
+      const c2 = new Wadis({ server });
+
+      await c1.xgroup("CREATE", "s2", "g2", "0", "MKSTREAM");
+
+      const p = (c1 as any).xreadgroup(
+         "GROUP",
+         "g2",
+         "w1",
+         "BLOCK",
+         2000,
+         "COUNT",
+         1,
+         "STREAMS",
+         "s2",
+         ">"
+      );
+
+      // wait a tick then add
+      setTimeout(async () => {
+         await c2.xadd("s2", "*", "f", "v");
+      }, 100);
+
+      const res = await p;
+      expect(Array.isArray(res)).toBe(true);
+
+      await c1.quit();
+      await c2.quit();
+      await server.terminate();
    });
 
    test.skip("bullmq job", async () => {

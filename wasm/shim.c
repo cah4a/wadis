@@ -11,6 +11,10 @@
 static connection g_fake_conn;
 static client **g_clients = NULL;
 static size_t g_clients_cap = 0;
+/* Per-handle re-entrancy guard: prevents nested processInputBuffer() calls
+ * for the same logical connection (e.g. feed() while a command is still
+ * being parsed/executed, or read() triggering parsing while feed() is busy). */
+static int *g_in_parse = NULL; /* 0 = idle, 1 = parsing/executing */
 
 /* Forward declarations from server.c that are not exposed in server.h */
 void initServerConfig(void);
@@ -121,16 +125,23 @@ void redis_free(unsigned char *ptr, size_t len) {
 }
 
 int redis_create_handle(void) {
-    client *c = moduleAllocTempClient();
+    /* Persistent handle uses a normal (non-module) client so that blocked
+     * command reprocessing follows the standard networking path. */
+    client *c = createClient(NULL);
     if (!c) return 0;
+    /* Assign a fake non-NULL connection to satisfy memory-tracking asserts
+     * (some code paths require c->conn != NULL). We never invoke any conn
+     * methods on this fake connection. */
     c->conn = &g_fake_conn;
     if (g_clients_cap == 0) {
         g_clients_cap = 64;
         g_clients = (client**)calloc(g_clients_cap, sizeof(client*));
+        g_in_parse = (int*)calloc(g_clients_cap, sizeof(int));
     }
     for (size_t i = 0; i < g_clients_cap; i++) {
         if (g_clients[i] == NULL) {
             g_clients[i] = c;
+            if (g_in_parse) g_in_parse[i] = 0;
             return (int)(i + 1);
         }
     }
@@ -138,7 +149,14 @@ int redis_create_handle(void) {
     g_clients_cap = g_clients_cap * 2;
     g_clients = (client**)realloc(g_clients, g_clients_cap * sizeof(client*));
     memset(g_clients + old, 0, (g_clients_cap - old) * sizeof(client*));
+    if (g_in_parse) {
+        g_in_parse = (int*)realloc(g_in_parse, g_clients_cap * sizeof(int));
+        memset(g_in_parse + old, 0, (g_clients_cap - old) * sizeof(int));
+    } else {
+        g_in_parse = (int*)calloc(g_clients_cap, sizeof(int));
+    }
     g_clients[old] = c;
+    g_in_parse[old] = 0;
     return (int)(old + 1);
 }
 
@@ -156,15 +174,19 @@ int redis_client_feed(int handle, const unsigned char *in_ptr, size_t in_len) {
         c->querybuf = sdscatlen(c->querybuf, in_ptr, in_len);
     }
 
-    /* Avoid re-entrancy: if a command (or script) is currently executing on
-     * this client, defer parsing until the execution is done. This prevents
-     * processMultibulkBuffer() from asserting that c->argc == 0 while the
-     * previous command argv is still populated. */
+    /* Avoid re-entrancy: if a command is currently executing on this client,
+     * or parsing/execution is already in progress for this handle, just buffer
+     * the input and return. We'll parse on the next pump. */
     if ((c->flags & CLIENT_EXECUTING_COMMAND) || scriptIsRunning()) {
         return 0;
     }
+    if (g_in_parse && g_in_parse[idx]) {
+        return 0;
+    }
 
+    g_in_parse[idx] = 1;
     int rc = processInputBuffer(c);
+    g_in_parse[idx] = 0;
     if (rc == C_ERR && server.current_client == NULL) return 4;
 
     return 0;
@@ -183,8 +205,12 @@ int redis_client_read(int handle, unsigned char **out_ptr, size_t *out_len) {
     if (c->querybuf && sdslen(c->querybuf) > 0 &&
         !(c->flags & CLIENT_EXECUTING_COMMAND) && !scriptIsRunning())
     {
-        int rc = processInputBuffer(c);
-        if (rc == C_ERR && server.current_client == NULL) return 5;
+        if (!(g_in_parse && g_in_parse[idx])) {
+            g_in_parse[idx] = 1;
+            int rc = processInputBuffer(c);
+            g_in_parse[idx] = 0;
+            if (rc == C_ERR && server.current_client == NULL) return 5;
+        }
     }
 
     size_t total = (size_t)c->bufpos;
@@ -226,7 +252,10 @@ void redis_client_free(int handle) {
     client *c = g_clients[idx];
     if (!c) return;
     g_clients[idx] = NULL;
-    moduleReleaseTempClient(c);
+    if (g_in_parse) g_in_parse[idx] = 0;
+    /* Free a persistent normal client. Clear conn to avoid connClose on fake conn. */
+    c->conn = NULL;
+    freeClient(c);
 }
 
 int redis_client_wants_close(int handle) {
